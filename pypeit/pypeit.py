@@ -244,6 +244,13 @@ class PypeIt(object):
         return std_outfile
 
     def calib_all(self):
+        """
+        Create calibrations for all setups
+
+        This will not crash if not all of the standard set of files are not provided
+
+
+        """
 
         self.tstart = time.time()
 
@@ -260,7 +267,6 @@ class PypeIt(object):
             # Loop on Detectors
             for self.det in detectors:
                 # Calibrate
-                # TODO Is the right behavior to just use the first frame?
                 self.caliBrate.set_config(grp_frames[0], self.det, self.par['calibrations'])
                 self.caliBrate.run_the_steps()
 
