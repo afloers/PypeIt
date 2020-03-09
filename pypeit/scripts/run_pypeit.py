@@ -44,8 +44,8 @@ def parser(options=None):
 
 #    parser.add_argument('-q', '--quick', default=False, help='Quick reduction',
 #                        action='store_true')
-#    parser.add_argument('-c', '--cpus', default=False, action='store_true',
-#                         help='Number of CPUs for parallel processing')
+    parser.add_argument('-c', '--calib_only', default=False, action='store_true',
+                         help='Only run on calibrations')
 #    parser.print_help()
 
     if options is None:
@@ -77,16 +77,17 @@ def main(args):
     # Instantiate the main pipeline reduction object
     pypeIt = pypeit.PypeIt(args.pypeit_file, verbosity=args.verbosity,
                            reuse_masters=args.use_masters, overwrite=args.overwrite,
-                           logname=logname, show=args.show)
-
-    # JFH I don't see why this is an optional argument here. We could allow the user to modify an infinite number of parameters
-    # from the command line? Why do we have the PypeIt file then? This detector can be set in the pypeit file.
+                           logname=logname, show=args.show, calib_only=args.calib_only)
     # Detector?
     if args.detector is not None:
         msgs.info("Restricting reductions to detector={}".format(args.detector))
         pypeIt.par['rdx']['detnum'] = int(args.detector)
 
-    pypeIt.reduce_all()
+    # Reduce
+    if args.calib_only:
+        pypeIt.calib_all()
+    else:
+        pypeIt.reduce_all()
     msgs.info('Data reduction complete')
     # QA HTML
     msgs.info('Generating QA HTML')

@@ -67,12 +67,13 @@ class PypeIt(object):
 #    __metaclass__ = ABCMeta
 
     def __init__(self, pypeit_file, verbosity=2, overwrite=True, reuse_masters=False, logname=None,
-                 show=False, redux_path=None):
+                 show=False, redux_path=None, calib_only=False):
 
         # Load
         cfg_lines, data_files, frametype, usrdata, setups \
                 = parse_pypeit_file(pypeit_file, runtime=True)
         self.pypeit_file = pypeit_file
+        self.calib_only = calib_only
 
         # Spectrograph
         cfg = ConfigObj(cfg_lines)
@@ -92,6 +93,11 @@ class PypeIt(object):
         if scistd_file is not None:
             msgs.info('Setting configuration-specific parameters using {0}'.format(
                       os.path.split(scistd_file)[1]))
+        else:
+            if self.calib_only:
+                # Try to find an arc or flat
+                if ('arc' in row['frametype']) or ('trace' in row['frametype']):
+                    scistd_file = data_files[idx]
         spectrograph_cfg_lines = self.spectrograph.config_specific_par(scistd_file).to_config()
         #   - Build the full set, merging with any user-provided
         #     parameters
@@ -151,7 +157,7 @@ class PypeIt(object):
                                                  caldir=self.calibrations_path,
                                                  qadir=self.qa_path,
                                                  reuse_masters=self.reuse_masters,
-                                                 show=self.show)
+                                                 show=self.show, skip_fails=self.calib_only)
         # Init
         self.verbosity = verbosity
         # TODO: I don't think this ever used
@@ -237,6 +243,30 @@ class PypeIt(object):
             msgs.error('Could not find standard file: {0}'.format(std_outfile))
         return std_outfile
 
+    def calib_all(self):
+
+        self.tstart = time.time()
+
+        # Frame indices
+        frame_indx = np.arange(len(self.fitstbl))
+        for i in range(self.fitstbl.n_calib_groups):
+            # Find all the frames in this calibration group
+            in_grp = self.fitstbl.find_calib_group(i)
+            grp_frames = frame_indx[in_grp]
+
+            # Find the detectors to reduce
+            detectors = PypeIt.select_detectors(detnum=self.par['rdx']['detnum'],
+                                            ndet=self.spectrograph.ndet)
+            # Loop on Detectors
+            for self.det in detectors:
+                # Calibrate
+                # TODO Is the right behavior to just use the first frame?
+                self.caliBrate.set_config(grp_frames[0], self.det, self.par['calibrations'])
+                self.caliBrate.run_the_steps()
+
+        # Finish
+        self.print_end_time()
+
     def reduce_all(self):
         """
         Main driver of the entire reduction
@@ -259,6 +289,8 @@ class PypeIt(object):
 
         # Frame indices
         frame_indx = np.arange(len(self.fitstbl))
+
+        embed(header='263 of pypeit')
 
         # Iterate over each calibration group and reduce the standards
         for i in range(self.fitstbl.n_calib_groups):

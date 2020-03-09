@@ -89,7 +89,7 @@ class Calibrations(object):
     # think the code won't save masters if they're reused, but allowing
     # save_masters as an argument allows us to make this explicit.
     def __init__(self, fitstbl, par, spectrograph, caldir=None, qadir=None, save_masters=True,
-                 reuse_masters=False, show=False):
+                 reuse_masters=False, show=False, skip_fails=False):
 
         # Check the types
         # TODO -- Remove this None option once we have data models for all the Calibrations
@@ -107,6 +107,7 @@ class Calibrations(object):
         self.spectrograph = spectrograph
 
         # Control flow
+        self.skip_fails = skip_fails
         self.reuse_masters = reuse_masters
         self.master_dir = caldir
         self.save_masters = save_masters
@@ -301,6 +302,10 @@ class Calibrations(object):
         # Load the MasterFrame (if it exists and is desired)?
         self.msarc = self.arcImage.load()
         if self.msarc is None:  # Otherwise build it
+            # Check that arcs exist!
+            if not self._chk_frames(self.arc_files, 'arc'):
+                return None
+            #
             msgs.info("Preparing a master {0:s} frame".format(self.arcImage.frametype))
             self.msarc = self.arcImage.build_image(bias=self.msbias, bpm=self.msbpm)
             # Save to Masters
@@ -330,9 +335,6 @@ class Calibrations(object):
 
         # Prep
         tilt_rows = self.fitstbl.find_frames('tilt', calib_ID=self.calib_ID, index=True)
-        if len(tilt_rows) == 0:
-            msgs.error('Must identify tilt frames to construct tilt image.')
-        self.tilt_files = self.fitstbl.frame_paths(tilt_rows)
         self.master_key_dict['tilt'] \
                 = self.fitstbl.master_key(tilt_rows[0] if len(tilt_rows) > 0 else self.frame,
                                           det=self.det)
@@ -343,6 +345,7 @@ class Calibrations(object):
             return self.mstilt
 
         # Instantiate with everything needed to generate the image (in case we do)
+        self.tilt_files = self.fitstbl.frame_paths(tilt_rows)
         self.tiltImage = tiltimage.TiltImage(self.spectrograph, files=self.tilt_files,
                                           det=self.det, msbias=self.msbias,
                                           par=self.par['tiltframe'],
@@ -353,6 +356,10 @@ class Calibrations(object):
         # Load the MasterFrame (if it exists and is desired)?
         self.mstilt = self.tiltImage.load()
         if self.mstilt is None:  # Otherwise build it
+            # Check that frames exist!
+            if not self._chk_frames(self.tilt_files, 'TiltImage'):
+                return None
+            #
             msgs.info("Preparing a master {0:s} frame".format(self.tiltImage.frametype))
             self.mstilt = self.tiltImage.build_image(bias=self.msbias, bpm=self.msbpm)
             # JFH Add a cr_masking option here. The image processing routines are not ready for it yet.
@@ -478,7 +485,11 @@ class Calibrations(object):
         """
         # Check for existing data
         if not self._chk_objs(['msarc', 'msbpm', 'tslits_dict', 'wv_calib']):
-            msgs.error('dont have all the objects')
+            if self.skip_fails:
+                msgs.warn("The key objects are not here to generate a FlatField")
+                return None
+            else:
+                msgs.error('dont have all the objects for a FlatField')
 
         if self.par['flatfield']['method'] is 'skip':
             # User does not want to flat-field
@@ -650,7 +661,10 @@ class Calibrations(object):
             self.edges.load()
             self.tslits_dict = self.edges.convert_to_tslits_dict()
         else:
-            # Build the trace image
+            # Check that frames exist!
+            if not self._chk_frames(self.trace_image_files, 'TraceImage'):
+                return None
+            # Proceed
             self.traceImage = traceimage.TraceImage(self.spectrograph,
                                                     files=self.trace_image_files, det=self.det,
                                                     par=self.par['traceframe'],
@@ -743,7 +757,11 @@ class Calibrations(object):
         """
         # Check for existing data
         if not self._chk_objs(['msarc', 'msbpm', 'tslits_dict']):
-            msgs.error('dont have all the objects')
+            if self.skip_fails:
+                msgs.warn("The key objects are not here to generate a WaveCalib")
+                return None
+            else:
+                msgs.error('Dont have all the objects for wv_calib!')
 
         # Check internals
         self._chk_set(['det', 'calib_ID', 'par'])
@@ -815,11 +833,11 @@ class Calibrations(object):
         # Check for existing data
         #TODO add mstilt_inmask to this list when it gets implemented.
         if not self._chk_objs(['mstilt', 'msbpm', 'tslits_dict', 'wv_calib']):
-            msgs.error('dont have all the objects')
-            self.tilts_dict = None
-            self.wt_maskslits = np.zeros_like(self.maskslits, dtype=bool)
-            self.tslits_dict['maskslits'] += self.wt_maskslits
-            return self.tilts_dict
+            if self.skip_fails:
+                msgs.warn("The key objects are not here to generate a WaveTilts")
+                return None
+            else:
+                msgs.error('Dont have all the objects for WaveTilts!')
 
         # Check internals
         self._chk_set(['det', 'calib_ID', 'par'])
@@ -906,6 +924,25 @@ class Calibrations(object):
                 return False
         return True
 
+    def _chk_frames(self, files, calib_type):
+        """
+        Simple method to check on availability of frames for creating the calib
+
+        If there are none, an Error is raised unless self.skip_fails is True
+
+        Args:
+            files (list):
+                List of files.  If empty, an error may be raised
+            calib_type (str):
+                Name of calib being considered.  Only for the error message
+        """
+        if len(files) == 0:
+            if self.skip_fails:
+                return False
+            else:
+                msgs.error("No frames provided to build the {:s}!".format(calib_type))
+        return True
+
     def __repr__(self):
         # Generate sets string
         txt = '<{:s}: frame={}, det={}, calib_ID={}'.format(self.__class__.__name__,
@@ -928,10 +965,10 @@ class MultiSlitCalibrations(Calibrations):
     ..todo:: Rename this child or eliminate altogether
     """
     def __init__(self, fitstbl, par, spectrograph, caldir=None, qadir=None, reuse_masters=False,
-                 show=False, steps=None):
+                 show=False, steps=None, skip_fails=False):
         super(MultiSlitCalibrations, self).__init__(fitstbl, par, spectrograph, caldir=caldir,
                                                     qadir=qadir, reuse_masters=reuse_masters,
-                                                    show=show)
+                                                    show=show, skip_fails=skip_fails)
         self.steps = MultiSlitCalibrations.default_steps() if steps is None else steps
 
     @staticmethod
