@@ -24,9 +24,8 @@ def parser(options=None):
     parser.add_argument('-t', '--hdrframetype', default=False, action='store_true',
                         help='Use file headers and the instument-specific keywords to determine'
                              'the type of each frame')
-    parser.add_argument('-r', '--sort_dir', default=None,
-                        help='Directory used to store the sorted files.  Default is to omit '
-                             'writing these files.')
+    parser.add_argument('-r', '--redux_path', default=None,
+                        help='Path to directory for the reduction.  Only advised for testing')
     parser.add_argument('-m', '--use_masters', default=False, action='store_true',
                         help='Load previously generated MasterFrames')
     parser.add_argument('-s', '--show', default=False, action='store_true',
@@ -76,6 +75,7 @@ def main(args):
 
     # Instantiate the main pipeline reduction object
     pypeIt = pypeit.PypeIt(args.pypeit_file, verbosity=args.verbosity,
+                           redux_path=args.redux_path,
                            reuse_masters=args.use_masters, overwrite=args.overwrite,
                            logname=logname, show=args.show, calib_only=args.calib_only)
     # Detector?
