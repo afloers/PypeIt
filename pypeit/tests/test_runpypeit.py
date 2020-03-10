@@ -92,7 +92,6 @@ def test_run_pypeit_calib_only():
         shutil.rmtree(testrawdir)
 
 
-'''
 @dev_suite_required
 def test_run_pypeit():
     # Get the directories
@@ -140,4 +139,3 @@ def test_run_pypeit():
     # Clean-up
     shutil.rmtree(outdir)
     shutil.rmtree(testrawdir)
-'''
