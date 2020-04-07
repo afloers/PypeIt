@@ -208,3 +208,6 @@ This worked on the Development Suite::
 
 with nice outputs.
 
+You should view using
+:ref:`out_spec1D:pypeit_show_1dspec` with --extract=BOX.
+
